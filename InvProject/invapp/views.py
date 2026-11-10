@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 from django.db.models import Q
+from django.core.paginator import Paginator
 
 # Create your views here.
 from .forms import productForm
@@ -58,13 +59,26 @@ def product_list_view(request):
 
     suppliers = Product.objects.values_list('supplier', flat=True).distinct().order_by('supplier')
 
+    # Pagination: 5 products per page
+    paginator = Paginator(products, 5)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Preserve GET parameters excluding page for pagination links
+    query_params = request.GET.copy()
+    if 'page' in query_params:
+        query_params.pop('page')
+    querystring = query_params.urlencode()
+
     context = {
-        'products': products,
+        'products': page_obj,
+        'page_obj': page_obj,
         'query': query,
         'selected_supplier': selected_supplier,
         'stock_filter': stock_filter,
         'sort_by': sort_by,
         'suppliers': suppliers,
+        'querystring': querystring,
     }
     return render(request, 'invapp/product_list.html', context)
 
