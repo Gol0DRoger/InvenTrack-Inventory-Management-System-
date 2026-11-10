@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect
+from django.db.models import Q
 
 # Create your views here.
 from .forms import productForm
@@ -8,7 +9,7 @@ from .models import Product
 
 #home view
 def home_view(request):
-    return render(request, 'invApp/home.html' )
+    return render(request, 'invapp/home.html')
 
 #create view
 def product_create_view(request):
@@ -24,7 +25,48 @@ def product_create_view(request):
 #Read view
 def product_list_view(request):
     products = Product.objects.all()
-    return render(request, 'invApp/product_list.html', {'products':products})
+
+    # Search by name or SKU
+    query = request.GET.get('q', '').strip()
+    if query:
+        products = products.filter(Q(name__icontains=query) | Q(sku__icontains=query))
+
+    # Dropdown filter: Supplier
+    selected_supplier = request.GET.get('supplier', '').strip()
+    if selected_supplier:
+        products = products.filter(supplier=selected_supplier)
+
+    # Dropdown filter: Stock Status
+    stock_filter = request.GET.get('stock', '').strip()
+    if stock_filter == 'in_stock':
+        products = products.filter(quantity__gt=0)
+    elif stock_filter == 'out_of_stock':
+        products = products.filter(quantity=0)
+
+    # Sorting by price and quantity
+    sort_by = request.GET.get('sort', '').strip()
+    if sort_by == 'price_asc':
+        products = products.order_by('price')
+    elif sort_by == 'price_desc':
+        products = products.order_by('-price')
+    elif sort_by == 'quantity_asc':
+        products = products.order_by('quantity')
+    elif sort_by == 'quantity_desc':
+        products = products.order_by('-quantity')
+    else:
+        products = products.order_by('product_id')
+
+    suppliers = Product.objects.values_list('supplier', flat=True).distinct().order_by('supplier')
+
+    context = {
+        'products': products,
+        'query': query,
+        'selected_supplier': selected_supplier,
+        'stock_filter': stock_filter,
+        'sort_by': sort_by,
+        'suppliers': suppliers,
+    }
+    return render(request, 'invapp/product_list.html', context)
 
 #Update view 
 def product_update_view(request, product_id):
