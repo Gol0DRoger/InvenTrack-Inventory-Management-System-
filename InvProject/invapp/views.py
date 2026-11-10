@@ -1,18 +1,27 @@
 from django.shortcuts import render, redirect
 from django.db.models import Q
 from django.core.paginator import Paginator
+from django.contrib.auth import logout
+from django.contrib.auth.decorators import login_required
 
 # Create your views here.
 from .forms import productForm
 from .models import Product
 
+# Auth views
+def logout_view(request):
+    logout(request)
+    return redirect('login')
+
 #CRUD
 
 #home view
+@login_required
 def home_view(request):
     return render(request, 'invapp/home.html')
 
 #create view
+@login_required
 def product_create_view(request):
     form = productForm()
     if request.method == 'POST':
@@ -24,6 +33,7 @@ def product_create_view(request):
     return render(request, 'invapp/product_form.html', {'form':form})
 
 #Read view
+@login_required
 def product_list_view(request):
     products = Product.objects.all()
 
@@ -83,6 +93,7 @@ def product_list_view(request):
     return render(request, 'invapp/product_list.html', context)
 
 #Update view 
+@login_required
 def product_update_view(request, product_id):
     product=Product.objects.get(product_id=product_id)
     form = productForm(instance=product)
@@ -95,6 +106,7 @@ def product_update_view(request, product_id):
     return render(request, 'invapp/product_form.html', {'form':form})
 
 #Delete View
+@login_required
 def product_delete_view(request, product_id):
     product = Product.objects.get(product_id = product_id)
    #The first url link will be GET from the list_section, then from del_confirmation page it will click POST request/
