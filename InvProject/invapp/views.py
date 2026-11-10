@@ -56,6 +56,9 @@ def query_groq_chatbot(api_key, conversation_history, products_data):
         error_body = e.read().decode("utf-8", errors="ignore")
         return None, f"Groq API returned HTTP {e.code}: {error_body}"
     except urllib.error.URLError as e:
+        reason_str = str(e.reason)
+        if "11001" in reason_str or "getaddrinfo" in reason_str:
+            return None, "Network error: Unable to resolve 'api.groq.com'. Please check your internet connection, DNS, or VPN/proxy settings."
         return None, f"Network error contacting Groq API: {e.reason}"
     except Exception as e:
         return None, f"Error communicating with Groq API: {str(e)}"
