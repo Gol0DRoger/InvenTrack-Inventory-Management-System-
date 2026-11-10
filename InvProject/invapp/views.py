@@ -35,8 +35,9 @@ def query_groq_chatbot(api_key, conversation_history, products_data):
         "Content-Type": "application/json",
         "User-Agent": "InventoryChatbot/1.0",
     }
+    model = os.environ.get('GROQ_MODEL', 'openai/gpt-oss-120b').strip() or 'openai/gpt-oss-120b'
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": model,
         "messages": api_messages,
         "temperature": 0.1,
     }
