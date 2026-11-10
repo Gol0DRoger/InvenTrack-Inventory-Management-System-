@@ -6,7 +6,17 @@ from django.contrib.auth.decorators import login_required
 
 # Create your views here.
 from .forms import productForm
-from .models import Product
+from .models import Product, AuditLog
+
+def get_product_snapshot(product):
+    return {
+        'product_id': product.product_id,
+        'name': product.name,
+        'sku': product.sku,
+        'price': float(product.price),
+        'quantity': int(product.quantity),
+        'supplier': product.supplier,
+    }
 
 # Auth views
 def logout_view(request):
@@ -27,7 +37,17 @@ def product_create_view(request):
     if request.method == 'POST':
         form = productForm(request.POST)
         if form.is_valid():
-            form.save()
+            product = form.save()
+            snapshot = get_product_snapshot(product)
+            AuditLog.objects.create(
+                action=AuditLog.ACTION_CREATE,
+                product_id=product.product_id,
+                product_name=product.name,
+                user=request.user if request.user.is_authenticated else None,
+                username=request.user.username if request.user.is_authenticated else 'Anonymous',
+                changes={k: {'old': None, 'new': v} for k, v in snapshot.items() if k != 'product_id'},
+                product_snapshot=snapshot,
+            )
             return redirect('product_list')
 
     return render(request, 'invapp/product_form.html', {'form':form})
@@ -95,12 +115,28 @@ def product_list_view(request):
 #Update view 
 @login_required
 def product_update_view(request, product_id):
-    product=Product.objects.get(product_id=product_id)
+    product = Product.objects.get(product_id=product_id)
     form = productForm(instance=product)
     if request.method == "POST":
-        form=productForm(request.POST, instance=product )
+        old_snapshot = get_product_snapshot(product)
+        form = productForm(request.POST, instance=product)
         if form.is_valid():
-            form.save()
+            updated_product = form.save()
+            new_snapshot = get_product_snapshot(updated_product)
+            changes = {}
+            for field in ['name', 'sku', 'price', 'quantity', 'supplier']:
+                if old_snapshot[field] != new_snapshot[field]:
+                    changes[field] = {'old': old_snapshot[field], 'new': new_snapshot[field]}
+            if changes:
+                AuditLog.objects.create(
+                    action=AuditLog.ACTION_UPDATE,
+                    product_id=updated_product.product_id,
+                    product_name=updated_product.name,
+                    user=request.user if request.user.is_authenticated else None,
+                    username=request.user.username if request.user.is_authenticated else 'Anonymous',
+                    changes=changes,
+                    product_snapshot=new_snapshot,
+                )
             return redirect('product_list')
 
     return render(request, 'invapp/product_form.html', {'form':form})
@@ -108,9 +144,27 @@ def product_update_view(request, product_id):
 #Delete View
 @login_required
 def product_delete_view(request, product_id):
-    product = Product.objects.get(product_id = product_id)
-   #The first url link will be GET from the list_section, then from del_confirmation page it will click POST request/
+    product = Product.objects.get(product_id=product_id)
     if request.method == 'POST':
-          product.delete()
-          return redirect('product_list')
-    return render(request, 'invApp/product_confirm_del.html', {'product': product})
+        snapshot = get_product_snapshot(product)
+        AuditLog.objects.create(
+            action=AuditLog.ACTION_DELETE,
+            product_id=product.product_id,
+            product_name=product.name,
+            user=request.user if request.user.is_authenticated else None,
+            username=request.user.username if request.user.is_authenticated else 'Anonymous',
+            changes={k: {'old': v, 'new': None} for k, v in snapshot.items() if k != 'product_id'},
+            product_snapshot=snapshot,
+        )
+        product.delete()
+        return redirect('product_list')
+    return render(request, 'invapp/product_confirm_del.html', {'product': product})
+
+#Audit History View
+@login_required
+def audit_history_view(request):
+    logs = AuditLog.objects.all().order_by('-timestamp')
+    paginator = Paginator(logs, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    return render(request, 'invapp/history.html', {'logs': page_obj})

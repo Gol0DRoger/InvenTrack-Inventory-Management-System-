@@ -1,0 +1,110 @@
+{% extends "invapp/layout.html" %}
+
+{% block title %} Audit History - Inventory App {% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="mb-0">Product Audit History</h1>
+  <span class="badge badge-secondary p-2">Read-Only Audit Trail</span>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0 text-center align-middle">
+      <thead class="thead-dark">
+        <tr>
+          <th>When (UTC)</th>
+          <th>Who</th>
+          <th>Action</th>
+          <th>Product</th>
+          <th>Changes (Old &rarr; New)</th>
+          <th>Product Snapshot</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="align-middle text-nowrap"><small>{{ log.timestamp|date:"Y-m-d H:i:s" }}</small></td>
+          <td class="align-middle"><strong>{{ log.username|default:"System" }}</strong></td>
+          <td class="align-middle">
+            {% if log.action == 'CREATE' %}
+              <span class="badge badge-success px-2 py-1">CREATE</span>
+            {% elif log.action == 'UPDATE' %}
+              <span class="badge badge-warning px-2 py-1">UPDATE</span>
+            {% elif log.action == 'DELETE' %}
+              <span class="badge badge-danger px-2 py-1">DELETE</span>
+            {% else %}
+              <span class="badge badge-secondary px-2 py-1">{{ log.action }}</span>
+            {% endif %}
+          </td>
+          <td class="align-middle text-left">
+            <strong>{{ log.product_name|default:"(Deleted Product)" }}</strong><br>
+            <small class="text-muted">ID: {{ log.product_id }}</small>
+          </td>
+          <td class="align-middle text-left small">
+            {% if log.action == 'CREATE' %}
+              <span class="text-success font-weight-bold">Created with:</span>
+              <ul class="mb-0 pl-3">
+                {% for key, val in log.product_snapshot.items %}
+                  <li>{{ key }}: <code>{{ val }}</code></li>
+                {% endfor %}
+              </ul>
+            {% elif log.action == 'DELETE' %}
+              <span class="text-danger font-weight-bold">Deleted item snapshot retained.</span>
+            {% elif log.changes %}
+              <ul class="mb-0 pl-3">
+                {% for field, diff in log.changes.items %}
+                  <li><strong>{{ field }}</strong>: <del class="text-danger">{{ diff.old }}</del> &rarr; <ins class="text-success">{{ diff.new }}</ins></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <span class="text-muted">No field changes</span>
+            {% endif %}
+          </td>
+          <td class="align-middle text-left small">
+            {% if log.product_snapshot %}
+              <div><strong>SKU:</strong> {{ log.product_snapshot.sku|default:"N/A" }}</div>
+              <div><strong>Price:</strong> ${{ log.product_snapshot.price }}</div>
+              <div><strong>Qty:</strong> {{ log.product_snapshot.quantity }}</div>
+              <div><strong>Supplier:</strong> {{ log.product_snapshot.supplier }}</div>
+            {% else %}
+              <span class="text-muted">No snapshot</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-muted text-center py-4">No audit history recorded yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if logs.has_other_pages %}
+<nav aria-label="Audit history pagination" class="mt-4">
+  <ul class="pagination justify-content-center">
+    {% if logs.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ logs.previous_page_number }}">&laquo; Previous</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">&laquo; Previous</span></li>
+    {% endif %}
+
+    {% for num in logs.paginator.page_range %}
+      {% if logs.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num > logs.number|add:'-3' and num < logs.number|add:'3' %}
+        <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+      {% endif %}
+    {% endfor %}
+
+    {% if logs.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ logs.next_page_number }}">Next &raquo;</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Next &raquo;</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
