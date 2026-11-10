@@ -1,3 +1,7 @@
+import os
+import json
+import urllib.request
+import urllib.error
 from django.shortcuts import render, redirect
 from django.db.models import Q
 from django.core.paginator import Paginator
@@ -7,6 +11,53 @@ from django.contrib.auth.decorators import login_required
 # Create your views here.
 from .forms import productForm
 from .models import Product, AuditLog
+
+def query_groq_chatbot(api_key, conversation_history, products_data):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    system_prompt = (
+        "You are an AI assistant for this inventory management system.\n"
+        "You have access ONLY to the following inventory data:\n"
+        f"{json.dumps(products_data, indent=2)}\n\n"
+        "STRICT INSTRUCTIONS:\n"
+        "1. Answer natural questions about products, stock levels, suppliers, prices, quantities, and SKUs accurately based ONLY on the data above.\n"
+        "2. For anything unrelated to the inventory, you MUST reply EXACTLY:\n"
+        "\"I can only answer questions about your inventory.\"\n"
+        "3. You are strictly read-only. You cannot and must not modify, add, or delete any data. If asked to modify, alter, or delete data, state that you are read-only.\n"
+        "4. Be concise and direct."
+    )
+
+    api_messages = [{"role": "system", "content": system_prompt}]
+    for msg in conversation_history:
+        api_messages.append({"role": msg["role"], "content": msg["content"]})
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "User-Agent": "InventoryChatbot/1.0",
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": api_messages,
+        "temperature": 0.1,
+    }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"].strip(), None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="ignore")
+        return None, f"Groq API returned HTTP {e.code}: {error_body}"
+    except urllib.error.URLError as e:
+        return None, f"Network error contacting Groq API: {e.reason}"
+    except Exception as e:
+        return None, f"Error communicating with Groq API: {str(e)}"
 
 def get_product_snapshot(product):
     return {
@@ -168,3 +219,44 @@ def audit_history_view(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     return render(request, 'invapp/history.html', {'logs': page_obj})
+
+# AI Inventory Chatbot Views
+@login_required
+def chatbot_view(request):
+    chat_history = request.session.get('chat_history', [])
+    error_message = None
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'clear':
+            request.session['chat_history'] = []
+            return redirect('chatbot')
+
+        user_message = request.POST.get('message', '').strip()
+        if user_message:
+            api_key = os.environ.get('GROQ_API_KEY', '').strip()
+            if not api_key:
+                error_message = "Groq API key not configured. Please set the GROQ_API_KEY environment variable."
+            else:
+                products_data = list(
+                    Product.objects.values('product_id', 'name', 'sku', 'price', 'quantity', 'supplier')
+                )
+                call_history = chat_history[-10:] + [{'role': 'user', 'content': user_message}]
+                assistant_reply, err = query_groq_chatbot(api_key, call_history, products_data)
+                if err:
+                    error_message = err
+                else:
+                    chat_history.append({'role': 'user', 'content': user_message})
+                    chat_history.append({'role': 'assistant', 'content': assistant_reply})
+                    request.session['chat_history'] = chat_history[-10:]
+                    return redirect('chatbot')
+
+    return render(request, 'invapp/chatbot.html', {
+        'chat_history': chat_history[-10:],
+        'error_message': error_message,
+    })
+
+@login_required
+def chatbot_clear_view(request):
+    request.session['chat_history'] = []
+    return redirect('chatbot')
