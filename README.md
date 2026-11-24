@@ -1,4 +1,4 @@
-# Inventory Management System — Project Context Document
+# InvenTrack: Inventory Management System
 
 ## 1. Project Overview
 A Django-based inventory management application providing full product lifecycle management (Create, Read, Update, Delete) augmented with enterprise features: unified search/filtering/sorting, pagination, strict SKU validation, an audit trail, role-based authentication, and a read-only Groq-powered AI assistant.
